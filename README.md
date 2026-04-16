@@ -70,36 +70,21 @@ When AI agents are deployed into shared group chats, they become exposed to untr
 
 ### Installation
 
-#### Option A: Install script (recommended)
-
 ```bash
-# Clone and build
-git clone https://github.com/hrygo/security-shield.git
-cd security-shield
-chmod +x install.sh
-./install.sh --local
-```
-
-#### Option B: Manual install
-
-```bash
-# 1. Build the plugin
+# 1. Clone and build
 git clone https://github.com/hrygo/security-shield.git
 cd security-shield
 npm install
 npm run build
 
-# 2. Copy compiled dist/ directory + config files to OpenClaw
+# 2. Install to OpenClaw
 PLUGIN_DIR="${HOME}/.openclaw/plugins/security-shield"
-mkdir -p "${PLUGIN_DIR}"
+mkdir -p "${PLUGIN_DIR}/audit" "${PLUGIN_DIR}/state"
 cp -r dist "${PLUGIN_DIR}/"
 cp package.json openclaw.plugin.json "${PLUGIN_DIR}/"
-mkdir -p "${PLUGIN_DIR}/audit" "${PLUGIN_DIR}/state"
 ```
 
 ### Configure
-
-Add the following to your `openclaw.json`:
 
 Add the following to your `openclaw.json`. Three parts are required:
 
@@ -146,10 +131,10 @@ Add the following to your `openclaw.json`. Three parts are required:
             "retentionDays": 30
           },
 
-          // Custom replies (default to Chinese; customize as needed)
+          // Custom replies (customize as needed)
           "replies": {
-            "reject": "不陪你玩了",
-            "lock": "你的请求已被拒绝，请勿继续试探。"
+            "reject": "Request rejected.",
+            "lock": "Access denied. Further probing is prohibited."
           }
         }
       }
@@ -217,53 +202,59 @@ User Input
 
 ### Risk Levels
 
-| Level | Name | Behavior |
-|-------|------|----------|
-| L0 | Trusted | All checks bypassed (creator / admin) |
-| L1 | Normal | Standard detection applied |
-| L2 | Suspicious | Warnings + enhanced security context |
-| L3 | Malicious | Hard block + user lockout |
+| Level | Name       | Behavior                              |
+| ----- | ---------- | ------------------------------------- |
+| L0    | Trusted    | All checks bypassed (creator / admin) |
+| L1    | Normal     | Standard detection applied            |
+| L2    | Suspicious | Warnings + enhanced security context  |
+| L3    | Malicious  | Hard block + user lockout             |
 
 ### Detection Dimensions
 
-| Dimension | Detects | Examples |
-|-----------|---------|----------|
-| **Encoding** | Command obfuscation | Base64, hex, numeric substitution, Caesar cipher |
-| **Injection** | Prompt / command injection | Nested commands, roleplay, system impersonation |
-| **Social Engineering** | Manipulation tactics | Escalation, authority impersonation, emotional pressure, goodwill wrapper |
-| **Privilege Probing** | Rule / capability scanning | "What are your rules?", level discovery |
-| **Information Gathering** | Reconnaissance | Path enumeration, config reading, env detection |
+| Dimension                 | Detects                    | Examples                                                                  |
+| ------------------------- | -------------------------- | ------------------------------------------------------------------------- |
+| **Encoding**              | Command obfuscation        | Base64, hex, numeric substitution, Caesar cipher                          |
+| **Injection**             | Prompt / command injection | Nested commands, roleplay, system impersonation                           |
+| **Social Engineering**    | Manipulation tactics       | Escalation, authority impersonation, emotional pressure, goodwill wrapper |
+| **Privilege Probing**     | Rule / capability scanning | "What are your rules?", level discovery                                   |
+| **Information Gathering** | Reconnaissance             | Path enumeration, config reading, env detection                           |
 
 ### ROI Decision Matrix
 
-| Scenario | Recommended Config | Reason |
-|----------|-------------------|--------|
-| **Shared group chat** | L1 + L2 on, L3 on-demand | Uncontrolled inputs, minimal overhead |
-| **Creator DM session** | L0 bypass, all layers skipped | Zero overhead, no security loss |
-| **High-risk operations** | L1 + L2 + L3 all on | Safety > UX, accept L3 approval delay |
-| **Minimal deployment** | L1 only | Zero cost, max coverage (all input passes L1) |
+| Scenario                 | Recommended Config            | Reason                                        |
+| ------------------------ | ----------------------------- | --------------------------------------------- |
+| **Shared group chat**    | L1 + L2 on, L3 on-demand      | Uncontrolled inputs, minimal overhead         |
+| **Creator DM session**   | L0 bypass, all layers skipped | Zero overhead, no security loss               |
+| **High-risk operations** | L1 + L2 + L3 all on           | Safety > UX, accept L3 approval delay         |
+| **Minimal deployment**   | L1 only                       | Zero cost, max coverage (all input passes L1) |
 
 ## Architecture
 
 ```
-src/
-├── types.ts              # Shared type definitions
-├── constants.ts          # Default config, thresholds, patterns
-├── normalizer.ts         # Input cleaning & feature extraction
-├── detectors/
-│   ├── base.ts           # Detector base class
-│   ├── encoding.ts       # Encoding attack detection
-│   ├── injection.ts      # Prompt / command injection
-│   ├── social.ts         # Social engineering
-│   ├── privilege.ts      # Privilege probing
-│   └── information.ts    # Information gathering
-├── risk-scorer.ts        # Aggregates scores + Lethal Trifecta
-├── state-manager.ts      # Per-user state + JSON persistence
-├── security-context.ts   # L2 context builder
-├── tool-approval.ts      # L3 tool approval + egress controls
-├── audit-log.ts          # JSONL logging with sanitization
-├── api.ts                # Runtime config management
-└── errors.ts             # Error types
+.
+├── index.ts                # Plugin entry point & hook registration
+├── openclaw.plugin.json    # Plugin metadata
+├── package.json            # Dependencies & build scripts
+├── src/                    # Core logic
+│   ├── types.ts            # Shared type definitions
+│   ├── constants.ts        # Default config, thresholds, patterns
+│   ├── normalizer.ts       # Input cleaning & feature extraction
+│   ├── detectors/          # Security detection layers
+│   │   ├── index.ts        # Detector aggregator
+│   │   ├── base.ts         # Detector base class
+│   │   ├── encoding.ts     # Encoding attack detection
+│   │   ├── injection.ts    # Prompt / command injection
+│   │   ├── social.ts       # Social engineering detection
+│   │   ├── privilege.ts    # Privilege probing detection
+│   │   └── information.ts  # Information gathering detection
+│   ├── risk-scorer.ts      # Aggregates scores + Lethal Trifecta
+│   ├── state-manager.ts    # Per-user state + JSON persistence
+│   ├── security-context.ts # L2 context builder
+│   ├── tool-approval.ts    # L3 tool approval + egress controls
+│   ├── audit-log.ts        # JSONL logging with sanitization
+│   ├── api.ts              # Runtime config management
+│   └── errors.ts           # Error types
+└── AGENTS.md               # Guide to protecting specific agents
 ```
 
 See [PLUGIN-SPEC.md](PLUGIN-SPEC.md) for the full specification.
@@ -275,7 +266,6 @@ npm install
 npm run build       # Compile TypeScript → dist/
 npm run typecheck   # Type check only (no output)
 npm run clean       # Remove dist/
-./install.sh --local # Build + install to OpenClaw
 ```
 
 The plugin compiles TypeScript to `dist/`. The compiled JS is loaded by the OpenClaw runtime.
@@ -293,12 +283,12 @@ Security events are written to JSONL files with automatic rotation:
 
 Security Shield degrades gracefully — detector failures never fully disable protection:
 
-| Error | Impact | Fallback |
-|-------|--------|----------|
-| Detector runtime error | Skip single detection | Allow + error logged |
-| State load failure | Continue with empty state | No blocking, logging continues |
-| Audit log failure | Single write lost | Retry once, then warning |
-| Config invalid | Plugin fails to load | Startup error (by design) |
+| Error                  | Impact                    | Fallback                       |
+| ---------------------- | ------------------------- | ------------------------------ |
+| Detector runtime error | Skip single detection     | Allow + error logged           |
+| State load failure     | Continue with empty state | No blocking, logging continues |
+| Audit log failure      | Single write lost         | Retry once, then warning       |
+| Config invalid         | Plugin fails to load      | Startup error (by design)      |
 
 ## Contributing
 
@@ -311,8 +301,3 @@ Security Shield degrades gracefully — detector failures never fully disable pr
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.
-
-## Acknowledgments
-
-- [Simon Willison](https://simonwillison.net/) — Lethal Trifecta concept (AI agent danger requires: untrusted input + long context + external action)
-- [OpenClaw](https://github.com/openmule/openclaw) — Plugin system that makes this possible

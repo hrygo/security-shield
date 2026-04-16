@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Switch from noEmit source-loading to compiled dist/ output
-- Add build.sh and install.sh scripts for one-command build + install
+- Add build.sh script for one-command build
+- Manual install instructions: copy dist/ to OpenClaw plugin directory
 - Update tsconfig.json: module=Node16, outDir=dist/, declarations enabled
 
 ## [1.1.0] — 2026-04-16
