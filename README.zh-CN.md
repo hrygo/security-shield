@@ -67,13 +67,30 @@
 
 ### 安装
 
-```bash
-# 1. 创建插件目录结构
-mkdir -p ~/.openclaw/plugins/security-shield/src/detectors
+#### 方式一：安装脚本（推荐）
 
-# 2. 复制插件文件
-cp -r src/* ~/.openclaw/plugins/security-shield/src/
-cp index.ts package.json openclaw.plugin.json ~/.openclaw/plugins/security-shield/
+```bash
+# 克隆并构建
+git clone https://github.com/hrygo/security-shield.git
+cd security-shield
+chmod +x install.sh
+./install.sh --local
+```
+
+#### 方式二：手动安装
+
+```bash
+# 1. 构建插件
+git clone https://github.com/hrygo/security-shield.git
+cd security-shield
+npm install
+npm run build
+
+# 2. 复制编译文件到 OpenClaw
+PLUGIN_DIR="${HOME}/.openclaw/plugins/security-shield"
+mkdir -p "${PLUGIN_DIR}/audit" "${PLUGIN_DIR}/state"
+cp -r dist/* "${PLUGIN_DIR}/"
+cp package.json openclaw.plugin.json "${PLUGIN_DIR}/"
 ```
 
 ### 配置
@@ -251,11 +268,13 @@ src/
 
 ```bash
 npm install
-npm run build       # 类型检查 (tsc --noEmit)
-npm run typecheck   # 同上
+npm run build       # 编译 TypeScript → dist/
+npm run typecheck   # 仅类型检查（无输出）
+npm run clean       # 删除 dist/
+./install.sh --local # 构建 + 安装到 OpenClaw
 ```
 
-插件使用 TypeScript `noEmit` 模式——源码由 OpenClaw 运行时直接加载。
+插件将 TypeScript 编译到 `dist/` 目录，OpenClaw 运行时加载编译后的 JS 文件。
 
 ## 审计日志
 

@@ -70,13 +70,30 @@ When AI agents are deployed into shared group chats, they become exposed to untr
 
 ### Installation
 
-```bash
-# 1. Create plugin directory structure
-mkdir -p ~/.openclaw/plugins/security-shield/src/detectors
+#### Option A: Install script (recommended)
 
-# 2. Copy plugin files
-cp -r src/* ~/.openclaw/plugins/security-shield/src/
-cp index.ts package.json openclaw.plugin.json ~/.openclaw/plugins/security-shield/
+```bash
+# Clone and build
+git clone https://github.com/hrygo/security-shield.git
+cd security-shield
+chmod +x install.sh
+./install.sh --local
+```
+
+#### Option B: Manual install
+
+```bash
+# 1. Build the plugin
+git clone https://github.com/hrygo/security-shield.git
+cd security-shield
+npm install
+npm run build
+
+# 2. Copy compiled files to OpenClaw
+PLUGIN_DIR="${HOME}/.openclaw/plugins/security-shield"
+mkdir -p "${PLUGIN_DIR}/audit" "${PLUGIN_DIR}/state"
+cp -r dist/* "${PLUGIN_DIR}/"
+cp package.json openclaw.plugin.json "${PLUGIN_DIR}/"
 ```
 
 ### Configure
@@ -254,11 +271,13 @@ See [PLUGIN-SPEC.md](PLUGIN-SPEC.md) for the full specification.
 
 ```bash
 npm install
-npm run build       # Type check (tsc --noEmit)
-npm run typecheck   # Same as build
+npm run build       # Compile TypeScript → dist/
+npm run typecheck   # Type check only (no output)
+npm run clean       # Remove dist/
+./install.sh --local # Build + install to OpenClaw
 ```
 
-The plugin uses TypeScript with `noEmit` — source is loaded directly by the OpenClaw runtime.
+The plugin compiles TypeScript to `dist/`. The compiled JS is loaded by the OpenClaw runtime.
 
 ## Audit Logs
 

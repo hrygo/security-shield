@@ -3,10 +3,13 @@
   "version": "1.1.0",
   "description": "Multi-layer security defense plugin for OpenClaw agents",
   "type": "module",
-  "main": "index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc --noEmit",
-    "typecheck": "tsc --noEmit"
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build"
   },
   "devDependencies": {
     "@types/node": "^20.19.39",
