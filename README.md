@@ -83,6 +83,8 @@ cp index.ts package.json openclaw.plugin.json ~/.openclaw/plugins/security-shiel
 
 Add the following to your `openclaw.json`:
 
+Add the following to your `openclaw.json`. Three parts are required:
+
 ```jsonc
 {
   "plugins": {
@@ -92,6 +94,9 @@ Add the following to your `openclaw.json`:
         "config": {
           // Users exempt from all security checks (creator / admin)
           "l0Users": ["ou_YOUR_L0_USER_ID"],
+
+          // Agent IDs to protect (empty = all agents, recommended: specify target agent)
+          "targetAgents": ["hermes"],
 
           // Risk score thresholds (0–100)
           "riskThresholds": {
@@ -114,6 +119,15 @@ Add the following to your `openclaw.json`:
             "mediumRequiresApproval": false
           },
 
+          // Audit log settings
+          "auditLog": {
+            "enabled": true,
+            "path": "~/.openclaw/plugins/security-shield/audit",
+            "maxSizeMb": 10,
+            "maxFiles": 5,
+            "retentionDays": 30
+          },
+
           // Custom replies (default to Chinese; customize as needed)
           "replies": {
             "reject": "不陪你玩了",
@@ -121,6 +135,18 @@ Add the following to your `openclaw.json`:
           }
         }
       }
+    },
+    // ── Plugin must be in the allow list ──────────────────────
+    "allow": [
+      // ... other plugins ...
+      "security-shield"
+    ],
+    // ── Plugin load path ──────────────────────────────────────
+    "load": {
+      "paths": [
+        // ... other plugin paths ...
+        "${USER_HOME}/.openclaw/plugins/security-shield"
+      ]
     }
   }
 }

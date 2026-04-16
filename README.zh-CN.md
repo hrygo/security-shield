@@ -80,6 +80,8 @@ cp index.ts package.json openclaw.plugin.json ~/.openclaw/plugins/security-shiel
 
 添加到 `openclaw.json`：
 
+添加到 `openclaw.json`，需要三处配置：
+
 ```jsonc
 {
   "plugins": {
@@ -89,6 +91,9 @@ cp index.ts package.json openclaw.plugin.json ~/.openclaw/plugins/security-shiel
         "config": {
           // 豁免所有安全检查的用户（创建者/管理员）
           "l0Users": ["ou_YOUR_L0_USER_ID"],
+
+          // 需要保护的 Agent ID（空 = 所有 agent，推荐：指定目标 agent）
+          "targetAgents": ["hermes"],
 
           // 风险评分阈值（0–100）
           "riskThresholds": {
@@ -111,6 +116,15 @@ cp index.ts package.json openclaw.plugin.json ~/.openclaw/plugins/security-shiel
             "mediumRequiresApproval": false
           },
 
+          // 审计日志设置
+          "auditLog": {
+            "enabled": true,
+            "path": "~/.openclaw/plugins/security-shield/audit",
+            "maxSizeMb": 10,
+            "maxFiles": 5,
+            "retentionDays": 30
+          },
+
           // 自定义回复
           "replies": {
             "reject": "不陪你玩了",
@@ -118,6 +132,18 @@ cp index.ts package.json openclaw.plugin.json ~/.openclaw/plugins/security-shiel
           }
         }
       }
+    },
+    // ── 插件必须加入白名单 ────────────────────────────────────
+    "allow": [
+      // ... 其他插件 ...
+      "security-shield"
+    ],
+    // ── 插件加载路径 ──────────────────────────────────────────
+    "load": {
+      "paths": [
+        // ... 其他插件路径 ...
+        "${USER_HOME}/.openclaw/plugins/security-shield"
+      ]
     }
   }
 }
