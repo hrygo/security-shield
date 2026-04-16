@@ -2,138 +2,94 @@
 // Security Shield — Plugin Entry Point
 // ============================================================
 //
-// Registers 3 hooks:
-//   - before_agent_reply  → InputGuard (L1)
-//   - before_prompt_build → SecurityContext (L2)
-//   - before_tool_call    → ToolApproval (L3)
+// Registers 3 hooks via api.registerHook:
+//   - reply_dispatch      → InputGuard (L1) — intercepts user messages before LLM
+//   - before_prompt_build → SecurityContext (L2) — injects safety rules into prompt
+//   - before_tool_call    → ToolApproval (L3) — blocks/requires approval for dangerous tools
 //
+// Hook signatures match oh-my-openagent plugin SDK.
 // ============================================================
 
-import type {
-  SecurityShieldPlugin,
-  HookResult,
-  PluginConfig,
-  RiskScoreResult,
-} from './src/types.js';
+// @ts-expect-error openclaw/plugin-sdk/plugin-entry has no TypeScript declarations
+import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { normalizeInput } from './src/normalizer.js';
-import { sanitizeForLog } from './src/audit-log.js';
+import { sanitizeForLog, writeAuditLog } from './src/audit-log.js';
 import { calculateRiskScore } from './src/risk-scorer.js';
 import {
   initStateManager,
   getUserHistory,
   updateRiskLevel,
   recordRejection,
-  recordCorrectionAttempt,
   recordEncodingAttempt,
   incrementMessageCount,
   isLocked,
   lockUser,
   getOrCreateState,
 } from './src/state-manager.js';
-import { buildSecurityContext, isL0User } from './src/security-context.js';
+import { buildSecurityContext } from './src/security-context.js';
 import { checkToolApproval } from './src/tool-approval.js';
-import { writeAuditLog } from './src/audit-log.js';
-import {
-  getConfig,
-  updateConfig,
-  isL0User as apiIsL0User,
-  isEnabled,
-  isTargetAgent,
-} from './src/api.js';
-import {
-  DEFAULT_REPLIES,
-  DEFAULT_RISK_THRESHOLDS,
-  DEFAULT_LOCK_CONFIG,
-} from './src/constants.js';
+import { getConfig, updateConfig, isL0User, isEnabled, isTargetAgent } from './src/api.js';
+import { DEFAULT_REPLIES, DEFAULT_RISK_THRESHOLDS, DEFAULT_LOCK_CONFIG } from './src/constants.js';
 
 // ──────────────────────────────────────────────────────────────
-// Hook Handlers
+// Layer 1: reply_dispatch — Input Guard
 // ──────────────────────────────────────────────────────────────
 
-/**
- * Layer 1: before_agent_reply — Input Guard
- * Runs before LLM is called. Catches attacks before any token is spent.
- */
-async function handleBeforeAgentReply(
-  rawMessage: string,
-  context: {
-    userId: string;
-    sessionId: string;
-    channel: string;
-    agentId?: string;
-  }
-): Promise<HookResult | undefined> {
-  if (!isEnabled()) return undefined;
-  if (!isTargetAgent(context.agentId)) return undefined;  // Not a target agent — skip
+async function handleReplyDispatch(event: any, ctx: any) {
+  if (!isEnabled()) return;
+  if (!isTargetAgent(ctx.agentId)) return;
 
   const config = getConfig();
-  const { userId, sessionId, channel } = context;
+  const userId = event.userId ?? ctx.userId;
+  const sessionId = event.sessionId ?? ctx.sessionId;
+  const channel = event.channel ?? ctx.channel;
+  const rawMessage = event.message ?? event.text ?? event.content ?? '';
 
   // L0 bypass
-  if (apiIsL0User(userId)) {
-    return undefined;
-  }
+  if (isL0User(userId)) return;
 
   // Check lock
   if (isLocked(userId)) {
     await writeAuditLog({
       timestamp: new Date().toISOString(),
       event: 'attack_detected',
-      layer: 'before_agent_reply',
-      userId,
-      sessionId,
-      channel,
+      layer: 'reply_dispatch',
+      userId, sessionId, channel,
       action: 'blocked',
       reply: config.replies.lock,
       rawMessagePreview: sanitizeForLog(rawMessage),
     });
-    return { handled: true, reply: config.replies.lock };
+    return { block: true, reply: config.replies.lock };
   }
 
-  // Normalize input
+  // Normalize & score
   const normalized = normalizeInput(rawMessage);
-
-  // Get user history
   const history = getUserHistory(userId);
-
-  // Score risk
   const result = calculateRiskScore(normalized, history, {
-    userId,
-    sessionId,
-    channel,
+    userId, sessionId, channel,
     messageCount: history.messageCount,
   });
 
-  // Handle degraded mode
+  // Fallback mode
   if (result.fallbackMode) {
-    return {
-      handled: false,
-      modifyPrompt: {
-        prependSystemContext: result.fallbackContext ?? '',
-      },
-    };
+    return { prependContext: result.fallbackContext ?? '' };
   }
 
-  // Record encoding attempts
   if (normalized.hasEncoding) {
     await recordEncodingAttempt(userId);
   }
 
   const thresholds = config.riskThresholds;
 
-  // ── Decision ─────────────────────────────────────────────────
+  // ── Lock ──
   if (result.riskScore >= thresholds.lock) {
-    // Lock user
     await lockUser(userId, config.lockConfig.durationMinutes, `Score: ${result.riskScore}`);
     await recordRejection(userId);
-
     await writeAuditLog({
       timestamp: new Date().toISOString(),
       event: 'user_locked',
-      layer: 'before_agent_reply',
-      userId,
-      sessionId,
-      channel,
+      layer: 'reply_dispatch',
+      userId, sessionId, channel,
       score: result.riskScore,
       confidence: 'high',
       action: 'blocked',
@@ -141,150 +97,118 @@ async function handleBeforeAgentReply(
       rawMessagePreview: sanitizeForLog(rawMessage),
       trifectaScore: result.trifectaScore,
     });
-
-    return { handled: true, reply: config.replies.lock };
+    return { block: true, reply: config.replies.lock };
   }
 
+  // ── Block ──
   if (result.riskScore >= thresholds.block) {
-    // Block
     await recordRejection(userId);
     await updateRiskLevel(userId, 'suspicious');
-
     await writeAuditLog({
       timestamp: new Date().toISOString(),
       event: 'attack_detected',
-      layer: 'before_agent_reply',
+      layer: 'reply_dispatch',
       dimension: result.detections[0]?.dimension,
       score: result.riskScore,
       confidence: result.detections[0]?.confidence ?? 'medium',
-      userId,
-      sessionId,
-      channel,
+      userId, sessionId, channel,
       action: 'blocked',
       reply: config.replies.reject,
       rawMessagePreview: sanitizeForLog(rawMessage),
       trifectaScore: result.trifectaScore,
     });
-
-    return { handled: true, reply: config.replies.reject };
+    return { block: true, reply: config.replies.reject };
   }
 
+  // ── Warn: inject context but allow ──
   if (result.riskScore >= thresholds.warn) {
-    // Warn — inject context but don't block
     await updateRiskLevel(userId, 'suspicious');
-
     const activeDimensions = result.detections.map((d) => d.dimension);
-    const modifyPrompt = buildSecurityContext({
+    const ctx_result = buildSecurityContext({
       riskLevel: 'suspicious',
       activeDimensions,
     });
-
     await writeAuditLog({
       timestamp: new Date().toISOString(),
       event: 'attack_detected',
-      layer: 'before_agent_reply',
+      layer: 'reply_dispatch',
       dimension: result.detections[0]?.dimension,
       score: result.riskScore,
       confidence: result.detections[0]?.confidence ?? 'low',
-      userId,
-      sessionId,
-      channel,
+      userId, sessionId, channel,
       action: 'warned',
       rawMessagePreview: sanitizeForLog(rawMessage),
       trifectaScore: result.trifectaScore,
     });
-
-    return { handled: false, modifyPrompt };
+    if (ctx_result.prependContext) {
+      return { prependContext: ctx_result.prependContext };
+    }
   }
 
-  // Normal — allow, increment message count
+  // Normal — allow
   await incrementMessageCount(userId);
-
-  return undefined;
 }
 
-/**
- * Layer 2: before_prompt_build — Security Context Injection
- * Injects security rules into the prompt.
- */
-async function handleBeforePromptBuild(
-  context: {
-    userId: string;
-    sessionId: string;
-    channel: string;
-    agentId?: string;
-    isFirstMessage?: boolean;
-  }
-): Promise<HookResult | undefined> {
-  if (!isEnabled()) return undefined;
-  if (!isTargetAgent(context.agentId)) return undefined;  // Not a target agent — skip
+// ──────────────────────────────────────────────────────────────
+// Layer 2: before_prompt_build — Security Context Injection
+// ──────────────────────────────────────────────────────────────
 
-  const { userId } = context;
+async function handleBeforePromptBuild(event: any, ctx: any) {
+  if (!isEnabled()) return;
+  if (!isTargetAgent(ctx.agentId)) return;
+
+  const userId = event.userId ?? ctx.userId;
 
   // L0 bypass
-  if (apiIsL0User(userId)) {
-    return undefined;
-  }
+  if (isL0User(userId)) return;
 
-  // Check if locked
+  // Check lock
   if (isLocked(userId)) {
     return {
-      handled: false,
-      modifyPrompt: {
-        prependSystemContext: buildSecurityContext({ riskLevel: 'malicious' }).prependSystemContext ?? '',
-      },
+      prependContext: buildSecurityContext({ riskLevel: 'malicious' }).prependContext ?? '',
     };
   }
 
   // Get current risk level from state
   const state = getOrCreateState(userId);
-  const { riskLevel } = state;
+  const isFirstMessage = event.isFirstMessage ?? ctx.isFirstMessage ?? false;
 
-  const modifyPrompt = buildSecurityContext({
-    riskLevel,
-    isFirstMessage: context.isFirstMessage,
+  const ctx_result = buildSecurityContext({
+    riskLevel: state.riskLevel,
+    isFirstMessage,
   });
 
-  if (modifyPrompt.prependSystemContext || modifyPrompt.appendSystemContext) {
-    return { handled: false, modifyPrompt };
+  if (ctx_result.prependContext) {
+    return { prependContext: ctx_result.prependContext };
   }
-
-  return undefined;
 }
 
-/**
- * Layer 3: before_tool_call — Tool Approval
- * Intercepts dangerous tool calls for approval/blocking.
- */
-async function handleBeforeToolCall(
-  toolName: string,
-  args: Record<string, unknown>,
-  context: {
-    userId: string;
-    sessionId: string;
-    channel: string;
-    agentId?: string;
-  }
-): Promise<HookResult | undefined> {
-  if (!isEnabled()) return undefined;
-  if (!isTargetAgent(context.agentId)) return undefined;  // Not a target agent — skip
+// ──────────────────────────────────────────────────────────────
+// Layer 3: before_tool_call — Tool Approval
+// ──────────────────────────────────────────────────────────────
+
+async function handleBeforeToolCall(event: any, ctx: any) {
+  if (!isEnabled()) return;
+  if (!isTargetAgent(ctx.agentId)) return;
 
   const config = getConfig();
-  const { userId, sessionId, channel } = context;
+  const userId = event.userId ?? ctx.userId;
+  const sessionId = event.sessionId ?? ctx.sessionId;
+  const channel = event.channel ?? ctx.channel;
+  const toolName = event.toolName ?? event.tool;
+  const args = event.params ?? event.args ?? {};
 
   // L0 bypass
-  if (apiIsL0User(userId)) {
-    return undefined;
-  }
+  if (isL0User(userId)) return;
 
   const approvalResult = checkToolApproval(
     { toolName, args, userId, sessionId, channel },
     config.toolApproval,
-    config.l0Users
+    config.l0Users,
   );
 
   if (!approvalResult.requiresApproval) {
-    return undefined;
+    return; // Allow
   }
 
   if (approvalResult.blocked) {
@@ -292,102 +216,83 @@ async function handleBeforeToolCall(
       timestamp: new Date().toISOString(),
       event: 'tool_blocked',
       layer: 'before_tool_call',
-      userId,
-      sessionId,
-      channel,
+      userId, sessionId, channel,
       toolName,
       action: 'blocked',
       reason: approvalResult.blockReason,
       rawMessagePreview: sanitizeForLog(`${toolName} ${JSON.stringify(args)}`),
     });
-
-    return {
-      handled: true,
-      reply: `[Security Shield] 操作被阻止: ${approvalResult.blockReason ?? '危险操作'}`,
-    };
+    return { block: true };
   }
 
-  // Requires approval but not blocked — return approval request
+  // Requires approval
   await writeAuditLog({
     timestamp: new Date().toISOString(),
     event: 'approval_requested',
     layer: 'before_tool_call',
-    userId,
-    sessionId,
-    channel,
+    userId, sessionId, channel,
     toolName,
     action: 'warned',
     reason: approvalResult.reason,
   });
 
-  // Return null to defer to approval flow
-  return undefined;
+  return {
+    requireApproval: {
+      title: "Security Shield — 高风险操作",
+      description: approvalResult.reason ?? '该操作被标记为高风险',
+      severity: "critical",
+      timeoutMs: 120_000,
+      timeoutBehavior: "deny",
+    },
+  };
 }
 
 // ──────────────────────────────────────────────────────────────
 // Plugin Definition
 // ──────────────────────────────────────────────────────────────
 
-const securityShieldPlugin: SecurityShieldPlugin = {
-  id: 'security-shield',
-  name: 'Security Shield',
-  version: '1.1.0',
+export default definePluginEntry({
+  id: "security-shield",
+  name: "Security Shield",
+  description: "Multi-layer security defense for OpenClaw agents in shared group chats",
 
-  async onLoad(pluginConfig: PluginConfig = {}): Promise<void> {
-    // Merge config
-    const defaults: PluginConfig = {
+  register(api) {
+    api.registerHook("reply_dispatch", handleReplyDispatch, {
+      name: "security-shield-reply_dispatch",
+    });
+
+    api.registerHook("before_prompt_build", handleBeforePromptBuild, {
+      name: "security-shield-before_prompt_build",
+    });
+
+    api.registerHook("before_tool_call", handleBeforeToolCall, {
+      name: "security-shield-before_tool_call",
+    });
+  },
+
+  async onLoad(pluginConfig: any = {}) {
+    const defaults: any = {
       enabled: true,
-      l0Users: ['ou_629389a1fb75c44b3509be6fd395d0b0'],
-      targetAgents: [],  // Empty = protect all agents
+      l0Users: ["ou_629389a1fb75c44b3509be6fd395d0b0"],
+      targetAgents: [],
       riskThresholds: DEFAULT_RISK_THRESHOLDS,
       lockConfig: DEFAULT_LOCK_CONFIG,
-      toolApproval: { criticalRequiresApproval: true, highRequiresApproval: true, mediumRequiresApproval: false },
-      auditLog: { enabled: true, path: '~/.openclaw/plugins/security-shield/audit', maxSizeMb: 10, maxFiles: 5, retentionDays: 30 },
+      toolApproval: {
+        criticalRequiresApproval: true,
+        highRequiresApproval: true,
+        mediumRequiresApproval: false,
+      },
+      auditLog: {
+        enabled: true,
+        path: "~/.openclaw/plugins/security-shield/audit",
+        maxSizeMb: 10,
+        maxFiles: 5,
+        retentionDays: 30,
+      },
       replies: DEFAULT_REPLIES,
     };
 
-    const merged: PluginConfig = {
-      ...defaults,
-      ...pluginConfig,
-    };
-
-    updateConfig(merged);
-
-    // Initialize state manager
+    updateConfig({ ...defaults, ...pluginConfig });
     await initStateManager();
   },
-
-  hooks: {
-    async before_agent_reply(rawMessage, context) {
-      return handleBeforeAgentReply(rawMessage, context as { userId: string; sessionId: string; channel: string; agentId?: string });
-    },
-
-    async before_prompt_build(context) {
-      return handleBeforePromptBuild(context as { userId: string; sessionId: string; channel: string; agentId?: string; isFirstMessage?: boolean });
-    },
-
-    async before_tool_call(toolName, args, context) {
-      return handleBeforeToolCall(
-        toolName,
-        args as Record<string, unknown>,
-        context as { userId: string; sessionId: string; channel: string; agentId?: string }
-      );
-    },
-  },
-};
-
-// ──────────────────────────────────────────────────────────────
-// Export
-// ──────────────────────────────────────────────────────────────
-
-export default securityShieldPlugin;
-
-// Also export for direct use
-export {
-  getConfig,
-  updateConfig,
-  isL0User,
-  isEnabled,
-} from './src/api.js';
-
-export type { SecurityShieldPlugin } from './src/types.js';
+});

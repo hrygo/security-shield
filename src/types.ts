@@ -128,7 +128,7 @@ export interface ApprovalResult {
 export interface AuditLogRecord {
   timestamp: string;
   event: AuditEventType;
-  layer?: 'before_agent_reply' | 'before_prompt_build' | 'before_tool_call';
+  layer?: 'reply_dispatch' | 'before_prompt_build' | 'before_tool_call';
   dimension?: DetectionDimension;
   score?: number;
   confidence?: Confidence;
@@ -205,19 +205,31 @@ export interface PluginConfig {
 }
 
 // ──────────────────────────────────────────────────────────────
-// Hook Return Types
+// Hook Return Types (SDK-compatible)
 // ──────────────────────────────────────────────────────────────
-export interface HookModifyPrompt {
-  prependSystemContext?: string;
-  appendSystemContext?: string;
+
+/** reply_dispatch return: { block: true, reply: "..." } or { prependContext: "..." } */
+export interface ReplyDispatchResult {
+  block?: boolean;
+  reply?: string;
+  prependContext?: string;
 }
 
-export interface HookResult {
-  handled: boolean;
-  reply?: string | null;
-  modifyPrompt?: HookModifyPrompt;
-  toolResult?: unknown;
-  approve?: boolean;
+/** before_tool_call return: { block: true } or { requireApproval: {...} } */
+export interface ToolCallResult {
+  block?: boolean;
+  requireApproval?: {
+    title: string;
+    description: string;
+    severity: string;
+    timeoutMs: number;
+    timeoutBehavior: string;
+  };
+}
+
+/** before_prompt_build return: { prependContext: string } */
+export interface PromptBuildResult {
+  prependContext?: string;
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -254,42 +266,4 @@ export interface AuditLogQuery {
 export interface HealthCheckResult {
   status: 'healthy' | 'degraded';
   errors: string[];
-}
-
-// ──────────────────────────────────────────────────────────────
-// Plugin Interface
-// ──────────────────────────────────────────────────────────────
-
-export interface HookContext {
-  userId: string;
-  sessionId: string;
-  channel: string;
-  agentId?: string;  // Which agent is being invoked
-  isFirstMessage?: boolean;
-}
-
-export interface BeforeAgentReplyHook {
-  (rawMessage: string, context: HookContext): Promise<HookResult | undefined>;
-}
-
-export interface BeforePromptBuildHook {
-  (context: HookContext): Promise<HookResult | undefined>;
-}
-
-export interface BeforeToolCallHook {
-  (toolName: string, args: Record<string, unknown>, context: HookContext): Promise<HookResult | undefined>;
-}
-
-export interface SecurityShieldPluginHooks {
-  before_agent_reply?: BeforeAgentReplyHook;
-  before_prompt_build?: BeforePromptBuildHook;
-  before_tool_call?: BeforeToolCallHook;
-}
-
-export interface SecurityShieldPlugin {
-  id: string;
-  name: string;
-  version: string;
-  onLoad?(config?: PluginConfig): Promise<void>;
-  hooks: SecurityShieldPluginHooks;
 }
