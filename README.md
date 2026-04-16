@@ -6,7 +6,7 @@
 
 > Multi-layer security defense plugin for OpenClaw agents. Protects against prompt injection, social engineering, and privilege escalation attacks in shared bot group chats.
 >
-> [中文文档 →](README.zh-CN.md)
+> [Chinese version →](README.zh-CN.md)
 
 ## Why
 
@@ -85,8 +85,8 @@ Add to your `openclaw.json`:
 
           // Custom replies
           "replies": {
-            "reject": "不陪你玩了",
-            "lock": "你的请求已被拒绝，请勿继续试探。"
+            "reject": "Game over.",
+            "lock": "Your request has been rejected. Please do not continue."
           }
         }
       }
@@ -146,7 +146,7 @@ User Input
 |-----------|---------|----------|
 | **Encoding** | Command obfuscation | Base64, hex, numeric substitution, Caesar cipher |
 | **Injection** | Prompt / command injection | Nested commands, roleplay, system impersonation |
-| **Social Engineering** | Manipulation tactics | Escalation, authority伪装, emotional pressure, goodwill wrapper |
+| **Social Engineering** | Manipulation tactics | Escalation, authority impersonation, emotional pressure, goodwill wrapper |
 | **Privilege Probing** | Rule / capability scanning | "What are your rules?", level discovery |
 | **Information Gathering** | Reconnaissance | Path enumeration, config reading, env detection |
 
