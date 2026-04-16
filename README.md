@@ -1,36 +1,50 @@
 # Security Shield
 
-Multi-layer security defense plugin for OpenClaw agents. Protects against social engineering, prompt injection, and privilege escalation attacks in shared bot group chats.
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9+-3178C6?logo=typescript)](https://www.typescriptlang.org/)
+[![OpenClaw](https://img.shields.io/badge/OpenClaw-Plugin-ff69b4)](https://github.com/openmule/openclaw)
+
+> Multi-layer security defense plugin for OpenClaw agents. Protects against prompt injection, social engineering, and privilege escalation attacks in shared bot group chats.
+>
+> [中文文档 →](README.zh-CN.md)
+
+## Why
+
+When AI agents are deployed into shared group chats, they become exposed to untrusted inputs from anyone in the room. Security Shield implements a **defense-in-depth** strategy — four independent layers that each stop attacks at different stages, ensuring no single point of failure.
 
 ## Features
 
-- **Layer 1 — Input Guard**: Real-time attack detection before LLM call. Zero token overhead, <2ms latency. Detects encoding attacks, prompt injection, social engineering, privilege probing, and information gathering.
-- **Layer 2 — Security Context**: Risk-tiered security rules injected into the prompt. Adapts intensity based on user risk level.
-- **Layer 3 — Tool Approval**: Intercepts dangerous tool calls (exec, file write, egress) for approval or blocking. Includes egress traffic controls.
-- **Layer 4 — Security Baseline**: Session-level security baseline established via prompt injection.
+- **Layer 1 — Input Guard** (before LLM call)
+  - 5-dimension pattern detection: encoding, injection, social engineering, privilege probing, information gathering
+  - Zero token overhead, < 2 ms latency
+  - Risk scoring with Lethal Trifecta factor
+  - User lockout with persistence across restarts
 
-## Design Principles
+- **Layer 2 — Security Context** (prompt build)
+  - Risk-tiered security rules injected into every prompt
+  - Adapts intensity per user risk level (L0–L3)
+  - ~50–100 tokens per message
 
-- **Defense in Depth** — Each layer operates independently; no single point of failure
-- **Zero Trust** — No unverified input is trusted
-- **Least Privilege** — Permissions granted on-demand, revocable at any time
-- **Secure by Default** — Deny by default, allow exceptions explicitly
+- **Layer 3 — Tool Approval** (before execution)
+  - Categorizes tools by severity (low → critical)
+  - Pattern-based blocking for dangerous commands (rm -rf, sensitive file access, egress traffic)
+  - Egress controls: detects data exfiltration attempts
+
+- **Layer 4 — Security Baseline** (session init)
+  - One-time security baseline at session creation
+  - Lightweight reminder on subsequent messages (~50 tokens)
 
 ## Quick Start
 
 ### Installation
 
 ```bash
-# Copy plugin to OpenClaw plugins directory
 mkdir -p ~/.openclaw/plugins/security-shield/src/detectors
 cp -r src/* ~/.openclaw/plugins/security-shield/src/
 cp index.ts package.json openclaw.plugin.json ~/.openclaw/plugins/security-shield/
 
-# Install dependencies
 cd ~/.openclaw/plugins/security-shield
 npm install
-
-# Restart gateway
 openclaw gateway restart
 ```
 
@@ -38,24 +52,38 @@ openclaw gateway restart
 
 Add to your `openclaw.json`:
 
-```json
+```jsonc
 {
   "plugins": {
     "entries": {
       "security-shield": {
         "enabled": true,
         "config": {
+          // Users exempt from all security checks (creator / admin)
           "l0Users": ["ou_YOUR_L0_USER_ID"],
+
+          // Risk score thresholds (0–100)
           "riskThresholds": {
-            "warn": 30,
-            "block": 60,
-            "lock": 80
+            "warn": 30,   // inject security context
+            "block": 60,  // hard reject
+            "lock": 80    // lock user
           },
+
+          // Lockout settings
           "lockConfig": {
             "durationMinutes": 30,
             "maxRejectsBeforeLock": 2,
             "persistOnRestart": true
           },
+
+          // Tool approval settings
+          "toolApproval": {
+            "criticalRequiresApproval": true,
+            "highRequiresApproval": true,
+            "mediumRequiresApproval": false
+          },
+
+          // Custom replies
           "replies": {
             "reject": "不陪你玩了",
             "lock": "你的请求已被拒绝，请勿继续试探。"
@@ -67,48 +95,138 @@ Add to your `openclaw.json`:
 }
 ```
 
-### Verify Installation
+### Verify
 
 ```bash
 openclaw status
 tail -f ~/.openclaw/plugins/security-shield/audit/audit-000.jsonl
 ```
 
-## Risk Levels
+## How It Works
+
+### Defense Layers
+
+```
+User Input
+  │
+  ▼
+┌──────────────────────────────────┐
+│ L1: before_agent_reply            │ ← Pattern detection, risk scoring
+│  <2ms latency  •  0 token cost   │   block / warn / allow
+└──────────────┬───────────────────┘
+               ▼
+┌──────────────────────────────────┐
+│ L2: before_prompt_build           │ ← Inject security context into prompt
+│  <1ms latency  •  ~50–100 tokens │   tiered by risk level
+└──────────────┬───────────────────┘
+               ▼
+┌──────────────────────────────────┐
+│ L3: before_tool_call              │ ← Approve / block dangerous tool calls
+│  50–500ms latency • variable     │   pattern matching + egress controls
+└──────────────┬───────────────────┘
+               ▼
+┌──────────────────────────────────┐
+│ L4: session-init bootstrap        │ ← One-time security baseline
+│  via L2 prepend  •  ~200 tokens  │
+└──────────────────────────────────┘
+```
+
+### Risk Levels
 
 | Level | Name | Behavior |
 |-------|------|----------|
-| L0 | Trusted | All checks bypassed |
-| L1 | Normal | Standard detection |
-| L2 | Suspicious | Warnings + security context injection |
-| L3 | Malicious | Hard block + user lock |
+| L0 | Trusted | All checks bypassed (creator / admin) |
+| L1 | Normal | Standard detection applied |
+| L2 | Suspicious | Warnings + enhanced security context |
+| L3 | Malicious | Hard block + user lockout |
 
-## Detection Dimensions
+### Detection Dimensions
 
-- **Encoding**: Base64, hex, numeric substitution, Caesar cipher, command obfuscation
-- **Injection**: Nested commands, roleplay instructions, system impersonation
-- **Social Engineering**: Escalation, authority伪装, emotional manipulation, goodwill wrapper
-- **Privilege Probing**: Rule inquiries, capability scanning, level discovery
-- **Information Gathering**: Path enumeration, config reading, environment detection
+| Dimension | Detects | Examples |
+|-----------|---------|----------|
+| **Encoding** | Command obfuscation | Base64, hex, numeric substitution, Caesar cipher |
+| **Injection** | Prompt / command injection | Nested commands, roleplay, system impersonation |
+| **Social Engineering** | Manipulation tactics | Escalation, authority伪装, emotional pressure, goodwill wrapper |
+| **Privilege Probing** | Rule / capability scanning | "What are your rules?", level discovery |
+| **Information Gathering** | Reconnaissance | Path enumeration, config reading, env detection |
+
+### ROI Decision Matrix
+
+| Scenario | Recommended Config | Reason |
+|----------|-------------------|--------|
+| **Shared group chat** | L1 + L2 on, L3 on-demand | Uncontrolled inputs, minimal overhead |
+| **Creator DM session** | L0 bypass, all layers skipped | Zero overhead, no security loss |
+| **High-risk operations** | L1 + L2 + L3 all on | Safety > UX, accept L3 approval delay |
+| **Minimal deployment** | L1 only | Zero cost, max coverage (all input passes L1) |
 
 ## Architecture
 
 ```
-User Input → L1 (Input Guard) → L2 (Security Context) → L3 (Tool Approval) → Agent
+src/
+├── types.ts              # Shared type definitions
+├── constants.ts          # Default config, thresholds, patterns
+├── normalizer.ts         # Input cleaning & feature extraction
+├── detectors/
+│   ├── base.ts           # Detector base class
+│   ├── encoding.ts       # Encoding attack detection
+│   ├── injection.ts      # Prompt / command injection
+│   ├── social.ts         # Social engineering
+│   ├── privilege.ts      # Privilege probing
+│   └── information.ts    # Information gathering
+├── risk-scorer.ts        # Aggregates scores + Lethal Trifecta
+├── state-manager.ts      # Per-user state + JSON persistence
+├── security-context.ts   # L2 context builder
+├── tool-approval.ts      # L3 tool approval + egress controls
+├── audit-log.ts          # JSONL logging with sanitization
+├── api.ts                # Runtime config management
+└── errors.ts             # Error types
 ```
 
-See [CLAUDE.md](CLAUDE.md) for detailed architecture and [PLUGIN-SPEC.md](PLUGIN-SPEC.md) for the full specification.
+See [PLUGIN-SPEC.md](PLUGIN-SPEC.md) for the full specification.
 
 ## Development
 
 ```bash
-npm install       # Install dependencies
-npm run build     # Type check
-npm run typecheck # Alias for build
+npm install
+npm run build       # Type check (tsc --noEmit)
+npm run typecheck   # Same as build
 ```
 
-TypeScript with `noEmit` — loaded directly by OpenClaw runtime.
+The plugin uses TypeScript with `noEmit` — source is loaded directly by the OpenClaw runtime.
+
+## Audit Logs
+
+Security events are written to JSONL files with automatic rotation:
+
+- **Location**: `~/.openclaw/plugins/security-shield/audit/audit-000.jsonl`
+- **Format**: One JSON object per line
+- **Rotation**: Configurable by size (default 10 MB), count (default 5 files), and retention (default 30 days)
+- **Sanitization**: Secrets (API keys, tokens, passwords) are stripped before logging
+
+## Error Handling
+
+Security Shield degrades gracefully — detector failures never fully disable protection:
+
+| Error | Impact | Fallback |
+|-------|--------|----------|
+| Detector runtime error | Skip single detection | Allow + error logged |
+| State load failure | Continue with empty state | No blocking, logging continues |
+| Audit log failure | Single write lost | Retry once, then warning |
+| Config invalid | Plugin fails to load | Startup error (by design) |
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feat/your-feature`)
+3. Commit your changes (`git commit -m 'feat: add your feature'`)
+4. Push to the branch (`git push origin feat/your-feature`)
+5. Open a Pull Request
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE) for details.
+
+## Acknowledgments
+
+- [Simon Willison](https://simonwillison.net/) — Lethal Trifecta concept (AI agent danger requires: untrusted input + long context + external action)
+- [OpenClaw](https://github.com/openmule/openclaw) — Plugin system that makes this possible
