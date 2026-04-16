@@ -86,11 +86,12 @@ cd security-shield
 npm install
 npm run build
 
-# 2. 复制编译文件到 OpenClaw
+# 2. 复制编译目录和配置到 OpenClaw
 PLUGIN_DIR="${HOME}/.openclaw/plugins/security-shield"
-mkdir -p "${PLUGIN_DIR}/audit" "${PLUGIN_DIR}/state"
-cp -r dist/* "${PLUGIN_DIR}/"
+mkdir -p "${PLUGIN_DIR}"
+cp -r dist "${PLUGIN_DIR}/"
 cp package.json openclaw.plugin.json "${PLUGIN_DIR}/"
+mkdir -p "${PLUGIN_DIR}/audit" "${PLUGIN_DIR}/state"
 ```
 
 ### 配置

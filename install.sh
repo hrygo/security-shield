@@ -22,15 +22,23 @@ if [ "${1:-}" = "--local" ]; then
   echo "📁 Installing to: ${PLUGIN_DIR}"
 
   # Create directories
-  mkdir -p "${PLUGIN_DIR}/src/detectors"
   mkdir -p "${PLUGIN_DIR}/audit"
   mkdir -p "${PLUGIN_DIR}/state"
 
-  # Copy files
-  cp -r dist/* "${PLUGIN_DIR}/"
+  # Copy compiled dist/ directory (preserves structure for main: dist/index.js)
+  cp -r dist "${PLUGIN_DIR}/"
+
+  # Copy config files
   cp package.json openclaw.plugin.json "${PLUGIN_DIR}/"
 
   echo "✅ Installed to ${PLUGIN_DIR}"
+  echo ""
+  echo "Installed structure:"
+  echo "  dist/index.js          ← compiled entry point"
+  echo "  dist/src/**/*.js       ← compiled modules"
+  echo "  dist/**/*.d.ts         ← type declarations"
+  echo "  audit/                 ← runtime audit logs"
+  echo "  state/                 ← runtime user state"
   echo ""
   echo "Next steps:"
   echo "  1. Add security-shield to openclaw.json:"
