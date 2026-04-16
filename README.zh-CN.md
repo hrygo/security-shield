@@ -68,13 +68,12 @@
 ### 安装
 
 ```bash
+# 1. 创建插件目录结构
 mkdir -p ~/.openclaw/plugins/security-shield/src/detectors
+
+# 2. 复制插件文件
 cp -r src/* ~/.openclaw/plugins/security-shield/src/
 cp index.ts package.json openclaw.plugin.json ~/.openclaw/plugins/security-shield/
-
-cd ~/.openclaw/plugins/security-shield
-npm install
-openclaw gateway restart
 ```
 
 ### 配置
@@ -124,10 +123,19 @@ openclaw gateway restart
 }
 ```
 
+### 重启
+
+```bash
+openclaw gateway restart
+```
+
 ### 验证
 
 ```bash
+# 检查插件是否已加载
 openclaw status
+
+# 首次安全事件发生后，查看审计日志：
 tail -f ~/.openclaw/plugins/security-shield/audit/audit-000.jsonl
 ```
 

@@ -71,18 +71,17 @@ When AI agents are deployed into shared group chats, they become exposed to untr
 ### Installation
 
 ```bash
+# 1. Create plugin directory structure
 mkdir -p ~/.openclaw/plugins/security-shield/src/detectors
+
+# 2. Copy plugin files
 cp -r src/* ~/.openclaw/plugins/security-shield/src/
 cp index.ts package.json openclaw.plugin.json ~/.openclaw/plugins/security-shield/
-
-cd ~/.openclaw/plugins/security-shield
-npm install
-openclaw gateway restart
 ```
 
-### Configuration
+### Configure
 
-Add to your `openclaw.json`:
+Add the following to your `openclaw.json`:
 
 ```jsonc
 {
@@ -115,10 +114,10 @@ Add to your `openclaw.json`:
             "mediumRequiresApproval": false
           },
 
-          // Custom replies
+          // Custom replies (default to Chinese; customize as needed)
           "replies": {
-            "reject": "Game over.",
-            "lock": "Your request has been rejected. Please do not continue."
+            "reject": "不陪你玩了",
+            "lock": "你的请求已被拒绝，请勿继续试探。"
           }
         }
       }
@@ -127,10 +126,19 @@ Add to your `openclaw.json`:
 }
 ```
 
+### Restart
+
+```bash
+openclaw gateway restart
+```
+
 ### Verify
 
 ```bash
+# Check if the plugin is loaded
 openclaw status
+
+# After first security event, check audit log:
 tail -f ~/.openclaw/plugins/security-shield/audit/audit-000.jsonl
 ```
 
