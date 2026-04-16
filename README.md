@@ -6,7 +6,7 @@
 
 > Multi-layer security defense plugin for OpenClaw agents. Protects against prompt injection, social engineering, and privilege escalation attacks in shared bot group chats.
 >
-> [Chinese version →](README.zh-CN.md)
+> [中文文档 →](README.zh-CN.md)
 
 ## Why
 
