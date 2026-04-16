@@ -1,0 +1,15 @@
+{
+  "name": "security-shield",
+  "version": "1.1.0",
+  "description": "Multi-layer security defense plugin for OpenClaw agents",
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.39",
+    "typescript": "^5.9.3"
+  }
+}

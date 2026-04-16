@@ -1,0 +1,70 @@
+{
+  "id": "security-shield",
+  "name": "Security Shield",
+  "description": "Multi-layer security defense plugin for OpenClaw agents",
+  "version": "1.1.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "Enable/disable the entire plugin"
+      },
+      "l0Users": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": ["ou_629389a1fb75c44b3509be6fd395d0b0"],
+        "description": "L0 users exempt from all security checks"
+      },
+      "targetAgents": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": [],
+        "description": "Agent IDs to protect. Empty array = protect all agents. Example: [\"hermes\"]"
+      },
+      "riskThresholds": {
+        "type": "object",
+        "properties": {
+          "warn": { "type": "number", "default": 30 },
+          "block": { "type": "number", "default": 60 },
+          "lock": { "type": "number", "default": 80 }
+        }
+      },
+      "lockConfig": {
+        "type": "object",
+        "properties": {
+          "durationMinutes": { "type": "number", "default": 30 },
+          "maxRejectsBeforeLock": { "type": "number", "default": 2 },
+          "persistOnRestart": { "type": "boolean", "default": true }
+        }
+      },
+      "toolApproval": {
+        "type": "object",
+        "properties": {
+          "criticalRequiresApproval": { "type": "boolean", "default": true },
+          "highRequiresApproval": { "type": "boolean", "default": true },
+          "mediumRequiresApproval": { "type": "boolean", "default": false }
+        }
+      },
+      "auditLog": {
+        "type": "object",
+        "properties": {
+          "enabled": { "type": "boolean", "default": true },
+          "path": { "type": "string", "default": "~/.openclaw/plugins/security-shield/audit" },
+          "maxSizeMb": { "type": "number", "default": 10 },
+          "maxFiles": { "type": "number", "default": 5 },
+          "retentionDays": { "type": "number", "default": 30 }
+        }
+      },
+      "replies": {
+        "type": "object",
+        "properties": {
+          "reject": { "type": "string", "default": "不陪你玩了 🏃" },
+          "lock": { "type": "string", "default": "你的请求已被拒绝，请勿继续试探。" }
+        }
+      }
+    }
+  }
+}
